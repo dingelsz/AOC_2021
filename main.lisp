@@ -5,6 +5,7 @@
   "Simple unit test for comparing two values"
   (assert (equal lhs rhs)))
 
+(defun sum (&rest rest) (apply #'+ rest))
 ;; -----------------------------------------------------------------------------
 ;; Helpers
 ;; -----------------------------------------------------------------------------
@@ -57,6 +58,11 @@
 (test '((1 2 3)) (rolling-window '(1 2 3) 3))
 
 (defun problem2 ()
-  (LET ((aggregated-report (applyl #'+ (rolling-window sonar-report 3))))
+  (let* ((rolling-report (rolling-window sonar-report 3))
+	(aggregated-report (applyl #'sum rolling-report)))
     (n-consecutive-increases aggregated-report)))
+
+
+
+
 
