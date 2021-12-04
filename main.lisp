@@ -6,6 +6,18 @@
   (assert (equal lhs rhs)))
 
 (defun sum (&rest rest) (apply #'+ rest))
+
+(defun transpose (matrix)
+  "transposes a matrix"
+  (apply #'mapcar #'list matrix))
+
+(defun string-to-list (s)
+  (if (equal "" s) ()
+      (cons (char s 0) (string-to-list (subseq s 1)))))
+
+;; Tests
+(test '((1 4 7) (2 5 8) (3 6 9)) (transpose '((1 2 3) (4 5 6) (7 8 9))))
+
 ;; -----------------------------------------------------------------------------
 ;; Helpers
 ;; -----------------------------------------------------------------------------
@@ -157,18 +169,70 @@
 ;; One weakness I am noticing is that it is hard to move around state. I think
 ;; that's just an issue on my part, I haven't come up with any good abstractions
 ;; to represent state. One approach is to pass around a key value store that
-;; can carry the state. 
+;; can carry the state.
+;; On a more detailed level, multiple-value-bind was chosen because it can
+;; unpack values easily. It is akward to use besides that. A nice medium
+;; could be a state abstraction that easily unpacks into bindings.
 ;; -----------------------------------------------------------------------------
 
 
+;; -----------------------------------------------------------------------------
+;; Day 3
+;; -----------------------------------------------------------------------------
+;; Problem 5
+;; -----------------------------------------------------------------------------
+
+(defparameter diagnostic-report (mapcar (lambda (x) (mapcar #'digit-char-p x))
+					(mapcar #'string-to-list (load-input 3))))
+
+(defun diagnostic-ratios (nums)
+  (loop
+    with N = (length (first nums))
+    with M = (length nums)
+    for i below N
+    collect (/ (apply #'sum (mapcar (lambda (x) (nth i x)) nums))
+	       M)))
+
+(defun bin-list-to-integer (bin-list)
+  (parse-integer (apply #'concatenate 'string  (mapcar #'write-to-string bin-list)) :radix 2))
+
+(defun problem5-list ()
+  (let* ((data (transpose diagnostic-report))
+	 (N (length (first data)))
+	 (M (mapcar (lambda (digit) (count 1 digit)) data))
+	 (delta (bin-list-to-integer (mapcar (lambda (x) (if (> 0.5 (/ x N)) 1 0)) M)))
+	 (epsilon (bin-list-to-integer (mapcar (lambda (x) (if (< 0.5 (/ x N)) 1 0)) M))))
+    (* delta epsilon)))
+
+(defun problem5 ()
+  (let* ((ratios (diagnostic-ratios diagnostic-report))
+	 (delta (bin-list-to-integer (mapcar (lambda (x) (if (> x 0.5) 1 0)) ratios)))
+	 (epsilon (bin-list-to-integer (mapcar (lambda (x) (if (< x 0.5) 1 0)) ratios))))
+    (* delta epsilon)))
+
+(test  (problem5) (problem5-list))
+
+;; -----------------------------------------------------------------------------
+;; Problem 6
+;; -----------------------------------------------------------------------------
+(defun process (nums predicate &optional (i 0))
+  (if (eq 1 (length nums)) (first nums)
+      (let* ((ratios (diagnostic-ratios nums))
+	     (keep (if (funcall predicate (nth i ratios)) 1 0))
+	     (filtered-nums (remove-if-not (lambda (x) (eq (nth i x) keep)) nums)))
+	(process filtered-nums predicate (+ 1 i)))))
+
+(defun problem6 ()
+  (let ((O-rating (bin-list-to-integer (process diagnostic-report (lambda (ratio) (<= 0.5 ratio)))))
+	(CO2-rating (bin-list-to-integer (process diagnostic-report (lambda (ratio) (> 0.5 ratio))))))
+    (* O-rating CO2-rating)))
 
 
-
-
-
-
-
-
-
-
-
+;; -----------------------------------------------------------------------------
+;; Retrospective
+;; This problem took a long time because I had to implement a few of the binary
+;; operations. I also got stuck trying to implement a complex solution to
+;; problem 6 on the first go. Once I added a good abstraction to handle ratios
+;; the problem became much easier. Lesson: if your answer gets too complicated
+;; look for opportunities to apply abstractions. 
+;; -----------------------------------------------------------------------------
