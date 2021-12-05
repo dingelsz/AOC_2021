@@ -3,9 +3,17 @@
 ;; -----------------------------------------------------------------------------
 ;; Utils
 ;; -----------------------------------------------------------------------------
-(defun test (lhs rhs)
+(defun test (lhs rhs &optional (test #'equal))
   "Simple unit test for comparing two values"
-  (assert (equal lhs rhs)))
+  (if (and (consp lhs) (consp rhs))
+      (loop
+	for i from 0 below (length lhs)
+	do (assert (funcall test (nth i lhs) (nth i rhs))))
+      (assert (funcall test lhs rhs))))
+
+(test 1 1)
+(test 1 1 #'=)
+(test '(1 2 3) '(1 2 3))
 
 (defun sum (&rest rest) (apply #'+ rest))
 
@@ -34,6 +42,19 @@
 (test T (all 1 2 3))
 (test NIL (all 1 2 NIL))
 (test T (all))
+
+(defun flatten (xs)
+  (cond ((null xs) ())
+	((atom (first xs)) (cons (first xs) (flatten (rest xs))))
+	(T (append (flatten (first xs)) (flatten (rest xs))))))
+
+(test '(1 2 3 2 3 4) (flatten '((1 2 3) (2 3 4))))
+
+(defun hash-counter (items &optional (test #'equal))
+  (setq counter (make-hash-table :test test))
+  (loop for x in items do (setf (gethash x counter) (+ 1 (or (gethash x counter) 0))))
+  counter
+  )
 
 ;; -----------------------------------------------------------------------------
 ;; Helpers
@@ -92,7 +113,7 @@
 
 (defun problem2 ()
   (let* ((rolling-report (rolling-window sonar-report 3))
-	(aggregated-report (applyl #'sum rolling-report)))
+	(aggregated-report (apply #'sum rolling-report)))
     (n-consecutive-increases aggregated-report)))
 
 ;; -----------------------------------------------------------------------------
@@ -345,4 +366,74 @@
 ;; split).
 ;; -----------------------------------------------------------------------------
 
+
+;; -----------------------------------------------------------------------------
+;; Day 5
+;; -----------------------------------------------------------------------------
+;; Problem 9
+;; Given a list of line endpoints, and considering only lines that are
+;; vertical or horizontal, how many points exist where two or more lines
+;; overlap?
+;; -----------------------------------------------------------------------------
+(defun line-from-string (s)
+  (ppcre:register-groups-bind ((#'parse-integer x1)
+			       (#'parse-integer y1)
+			       (#'parse-integer x2)
+			       (#'parse-integer y2))
+      ("([0-9]+),([0-9]+) -> ([0-9]+),([0-9]+)" s)
+    `((,x1 ,y1) (,x2 ,y2))))
+
+(defun points-from-line (l)
+  (destructuring-bind ((x1 y1) (x2 y2)) l
+    (if (= x1 x2)
+	(loop
+	  for y from (min y1 y2) to (max y1 y2)
+	  collect (list x1 y))
+	(let* ((m (/ (- y2 y1) (- x2 x1)))
+	       (b (- y1 (* m x1))))
+	  (loop
+	    for x from (min x1 x2) to (max x1 x2)
+	    collect (list x (+ (* m x) b)))))))
+ 
+;; tests
+(test '((1 9) (2 9)) (line-from-string "1,9 -> 2,9"))
+(test '((3 9) (2 9)) (line-from-string "3,9 -> 2,9"))
+(test '((0 0) (1 1)) (line-from-string "0,0 -> 1,1"))
+(test '((0 0) (0 1)) (line-from-string "0,0 -> 0,1"))
+
+(test '((1 9) (2 9)) (points-from-line (line-from-string "1,9 -> 2,9")))
+(test '((2 9) (3 9)) (points-from-line (line-from-string "3,9 -> 2,9")))
+(test '((0 0) (1 1)) (points-from-line (line-from-string "0,0 -> 1,1")))
+(test '((0 0) (0 1)) (points-from-line (line-from-string "0,0 -> 0,1")))
+(test '((2 0) (3 1) (4 2)) (points-from-line (line-from-string "4,2 -> 2,0")))
+
+(defun diagonal-p (line)
+  (destructuring-bind ((x1 y1) (x2 y2)) line
+    (and (/= x1 x2)
+	 (/= y1 y2))))
+
+(test NIL (diagonal-p (line-from-string "0,0 -> 1,0")))
+(test T   (diagonal-p (line-from-string "0,0 -> 1,1")))
+
+;; Problem driver
+(defun problem9 ()
+  (let ((points (reduce
+		 #'append
+		 (loop for line in (mapcar #'line-from-string (load-input 5))
+		       unless (diagonal-p line) collect (points-from-line line)))))
+    (loop for count being the hash-values in (hash-counter points)
+	  counting (> count 1))))
+
+
+;; -----------------------------------------------------------------------------
+;; Problem 10
+;; Easy - just remove diagonal filtering
+;; -----------------------------------------------------------------------------
+(defun problem10 ()
+  (let ((points (reduce
+		 #'append
+		 (loop for line in (mapcar #'line-from-string (load-input 5))
+		       collect (points-from-line line)))))
+    (loop for count being the hash-values in (hash-counter points)
+	  counting (> count 1))))
 
