@@ -1,3 +1,5 @@
+(ql:quickload :cl-ppcre)
+
 ;; -----------------------------------------------------------------------------
 ;; Utils
 ;; -----------------------------------------------------------------------------
@@ -11,12 +13,27 @@
   "transposes a matrix"
   (apply #'mapcar #'list matrix))
 
+;; Tests
+(test '((1 4 7) (2 5 8) (3 6 9)) (transpose '((1 2 3) (4 5 6) (7 8 9))))
+
 (defun string-to-list (s)
   (if (equal "" s) ()
       (cons (char s 0) (string-to-list (subseq s 1)))))
 
-;; Tests
-(test '((1 4 7) (2 5 8) (3 6 9)) (transpose '((1 2 3) (4 5 6) (7 8 9))))
+(defun curry (fn x)
+  "curries the function fn with x"
+  (lambda (y) (funcall fn x y)))
+
+(test 7 (funcall (curry #'sum 3) 4))
+
+(defun all (&rest rest)
+  (loop
+    for x in rest
+    always x))
+
+(test T (all 1 2 3))
+(test NIL (all 1 2 NIL))
+(test T (all))
 
 ;; -----------------------------------------------------------------------------
 ;; Helpers
@@ -236,3 +253,96 @@
 ;; the problem became much easier. Lesson: if your answer gets too complicated
 ;; look for opportunities to apply abstractions. 
 ;; -----------------------------------------------------------------------------
+
+;; -----------------------------------------------------------------------------
+;; Day 4
+;; -----------------------------------------------------------------------------
+;; Problem 7
+;; Bingo - Given a sequence of numbers and a set of 5x5 boards, figure out
+;; which board will win
+;; Thoughts
+;; - Could update values in place by setting them to -1 to mark drawn numbers
+;; - Lets try a top down approach
+;; -----------------------------------------------------------------------------
+
+;; While numbers and not a winning board
+;; - draw a number and add it to each board
+;; With the winning board
+;; - return product of all non selected numbers and last draw number
+(defun mark-board (n board)
+  (if (null board) ()
+      (cons (substitute NIL n (first board)) (mark-board n (rest board)))))
+
+(defun unmarked-sum (board)
+  (if (null board) 0
+      (+ (apply #' sum (remove NIL (first board))) (unmarked-sum (rest board)))))
+
+(defun winner-p (board)
+  (flet ((good-board (board) (loop
+			       for row in board
+			       do (when (null (remove-if #'null row)) (return T)))))
+    (or (good-board board) (good-board (transpose board)))))
+
+ 
+;; Tests
+(defparameter test-board '((1 2 3) (4 5 6) (7 8 9)))
+(test '((1 2 NIL) (4 5 6) (7 8 9)) (mark-board 3 test-board))
+(test test-board (mark-board 10 test-board))
+
+(test 45 (unmarked-sum test-board))
+(test 42 (unmarked-sum '((1 2 NIL) (4 5 6) (7 8 9))))
+
+(test NIL (winner-p test-board))
+(test T (winner-p '((NIL 1) (NIL 2))))
+(test T (winner-p '((NIL NIL) (3 2))))
+
+(winner-p '((NIL 1) (NIL 2)))
+
+;; Problem driver
+(defparameter bingo-draws
+  (mapcar #'parse-integer
+	  (cl-ppcre:split " " (cl-ppcre:regex-replace-all "," (first (load-input 4)) " "))))
+
+(defun bingo-boards ()
+  (let ((rows (remove NIL
+		       (loop
+			 for row in (rest (load-input 4))
+			 collect (mapcar #'parse-integer
+					 (remove-if (lambda (x) (or (equal x "") (equal x " ") (null x)))
+						    (cl-ppcre:split " " row)))))))
+    (loop repeat (/ (length rows) 5)
+	  for i = 0 then (+ i 5)
+	  collect (subseq rows i (+ i 5)))))
+
+(defun problem7 (numbers boards)
+  (loop
+    for n in numbers
+    do (setf boards (mapcar (lambda (b) (mark-board n b)) boards))
+    do (let ((winning-board (find T boards :key #'winner-p)))
+	 (when winning-board (return (* n (unmarked-sum winning-board)))))))
+
+
+;; -----------------------------------------------------------------------------
+;; Problem 8
+;; Instead of looking for the first wining board we are looking for the last
+;; winning board. 
+;; -----------------------------------------------------------------------------
+(defun problem8 (numbers boards)
+  (loop
+    for n in numbers
+    do (let ((remaining-boards (remove-if #'winner-p boards)))
+	 (when (and (= 1 (length remaining-boards))
+		    (winner-p (mark-board n (first remaining-boards))))
+	   (return (* n (unmarked-sum (mark-board n (first remaining-boards)))))))
+    do (setf boards (mapcar (lambda (b) (mark-board n b)) boards))))
+
+
+;; -----------------------------------------------------------------------------
+;; Retrospective:
+;; Working from the top down was a good approach for this problem. Lisp is a
+;; language that likes to go top down. I do keep running into issues processing
+;; data. ppcre helped with some of the string processing (regex-replace-all and
+;; split).
+;; -----------------------------------------------------------------------------
+
+
