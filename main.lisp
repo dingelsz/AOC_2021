@@ -56,6 +56,18 @@
   counter
   )
 
+(defun hash-inc (key hash delta)
+  (setf (gethash key hash) (+ delta (gethash key hash 0))))
+
+(defun hash-print (hash)
+  (loop for key being the hash-keys in hash
+	do (format T "key=~A, value=~A~%" key (gethash key hash))))
+
+(defun curry (fn x)
+  (lambda (&rest rest) (apply fn (cons x rest))))
+
+(test 6 (funcall (curry #'+ 1) 2 3))
+
 ;; -----------------------------------------------------------------------------
 ;; Helpers
 ;; -----------------------------------------------------------------------------
@@ -436,4 +448,36 @@
 		       collect (points-from-line line)))))
     (loop for count being the hash-values in (hash-counter points)
 	  counting (> count 1))))
+
+;; -----------------------------------------------------------------------------
+;; Day 6
+;; -----------------------------------------------------------------------------
+;; Problem 11
+;; -----------------------------------------------------------------------------
+(defparameter fish-ages (mapcar #'parse-integer (ppcre:split "," (first (load-input 6)))))
+(defparameter fish-count (hash-counter fish-ages))
+
+(defun fish-step (fish-count)
+  (let ((fish-count_t+1 (hash-counter ()))
+	(ready-fish (gethash 0 fish-count 0)))
+    (loop for age from 8 downto 1
+	  do (setf (gethash (- age 1) fish-count_t+1) (gethash age fish-count 0)))
+    (hash-inc 6 fish-count_t+1 ready-fish)
+    (hash-inc 8 fish-count_t+1 ready-fish)
+    fish-count_t+1))
+
+(defun fish-sim (fish-count days)
+  (if (< days 1) fish-count
+      (fish-sim (fish-step fish-count) (- days 1))))
+
+(defun problem11 ()
+  (loop for c being the hash-values in (fish-sim fish-count 80) sum c))
+
+;; -----------------------------------------------------------------------------
+;; Problem 12
+;; Counting fish over a larger time span. They are "fishing" for scalablility
+;; issues
+;; -----------------------------------------------------------------------------
+(defun problem12 ()
+  (loop for c being the hash-values in (fish-sim fish-count 256) sum c))
 
