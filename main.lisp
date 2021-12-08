@@ -63,6 +63,12 @@
   (loop for key being the hash-keys in hash
 	do (format T "key=~A, value=~A~%" key (gethash key hash))))
 
+(defun hash-keys (hash-table)
+  (loop for key being the hash-keys of hash-table collect key))
+
+(defun hash-values (hash-table)
+  (loop for value being the hash-values of hash-table collect value))
+
 (defun curry (fn x)
   (lambda (&rest rest) (apply fn (cons x rest))))
 
@@ -481,3 +487,77 @@
 (defun problem12 ()
   (loop for c being the hash-values in (fish-sim fish-count 256) sum c))
 
+;; -----------------------------------------------------------------------------
+;; Day 7
+;; -----------------------------------------------------------------------------
+;; Problem 13
+;; -----------------------------------------------------------------------------
+
+(defun cost-to-move-to (x crabs cost)
+  (loop for pos being the hash-keys of crabs
+	summing (* (gethash pos crabs) (funcall cost x pos)) into sum
+	finally (return sum)))
+
+;; Tests
+(test 1 (cost-to-move-to 0 (hash-counter '(1)) (lambda (x pos) (abs (- x pos)))))
+(test 2 (cost-to-move-to 0 (hash-counter '(1 1)) (lambda (x pos) (abs (- x pos)))))
+(test 4 (cost-to-move-to 0 (hash-counter '(1 1 2)) (lambda (x pos) (abs (- x pos)))))
+(test 37 (cost-to-move-to 2 (hash-counter '(16 1 2 0 4 2 7 1 2 14)) (lambda (x pos) (abs (- x pos)))))
+
+(test 168 (cost-to-move-to 2
+			   (hash-counter '(16 1 2 0 4 2 7 1 2 14))
+			   (lambda (x pos) (let ((n (abs (- x pos))))
+					     (/ (* (+ 1 n) n) 2)))))
+
+(test 1 (cost-to-move-to 0
+			   (hash-counter '(1))
+			   (lambda (x pos) (let ((n (abs (- x pos))))
+					     (/ (* (+ 1 n) n) 2)))))
+
+(test 3 (cost-to-move-to 0
+			   (hash-counter '(2))
+			   (lambda (x pos) (let ((n (abs (- x pos))))
+					     (/ (* (+ 1 n) n) 2)))))
+(test 168 (cost-to-move-to 5
+			   (hash-counter '(16 1 2 0 4 2 7 1 2 14))
+			   (lambda (x pos) (let ((n (abs (- x pos))))
+					     (/ (* (+ 1 n) n) 2)))))
+
+
+
+(defun problem13 ()
+  (let* ((counter (hash-counter (mapcar #'parse-integer (ppcre:split "," (first  (load-input 7))))))
+	 (left (apply #'min (hash-keys counter)))
+	 (right (apply #'max (hash-keys counter))))
+    (loop
+      for i from left to right
+      minimizing (cost-to-move-to i counter (lambda (x pos) (abs (- x pos)))) into min
+      finally (return min))))
+
+;; -----------------------------------------------------------------------------
+;; Problem14
+;; -----------------------------------------------------------------------------
+
+(defun problem14 ()
+  (let* ((counter (hash-counter (mapcar #'parse-integer (ppcre:split "," (first  (load-input 7))))))
+	 (left (apply #'min (hash-keys counter)))
+	 (right (apply #'max (hash-keys counter))))
+    (loop
+      for i from left to right
+      minimizing (cost-to-move-to
+		  i
+		  counter
+		  (lambda (x pos) (let ((n (abs (- x pos))))
+				    (/ (* (+ 1 n) n) 2)))) into min
+      finally (return min))))
+
+;; -----------------------------------------------------------------------------
+;; Retrospective
+;; Whats the runtime?
+;; The outer loop of the program runs for every number between the smallest
+;; and largest. That could be a very large number but lets call the difference n
+;; Cost-to-move-to calculates a constant value for each unique crab position.
+;; We can call that number m. So, the runtime is O(n*m).
+;; I'm not sure how but I have a feeling a hueristic could be used to speed up
+;; the algo. Maybe look around the median/mean? 
+;; -----------------------------------------------------------------------------
