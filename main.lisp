@@ -69,6 +69,12 @@
 (defun hash-values (hash-table)
   (loop for value being the hash-values of hash-table collect value))
 
+(defun hash-get-inv (value hash-table &optional (test #'eq))
+  (loop for key in (hash-keys hash-table)
+	when (funcall test value (gethash key hash-table)) collect key))
+
+(test '(1 2) (hash-get-inv 3 (hash-counter '(1 1 1 2 2 2))))
+
 (defun curry (fn x)
   (lambda (&rest rest) (apply fn (cons x rest))))
 
@@ -504,11 +510,6 @@
 (test 4 (cost-to-move-to 0 (hash-counter '(1 1 2)) (lambda (x pos) (abs (- x pos)))))
 (test 37 (cost-to-move-to 2 (hash-counter '(16 1 2 0 4 2 7 1 2 14)) (lambda (x pos) (abs (- x pos)))))
 
-(test 168 (cost-to-move-to 2
-			   (hash-counter '(16 1 2 0 4 2 7 1 2 14))
-			   (lambda (x pos) (let ((n (abs (- x pos))))
-					     (/ (* (+ 1 n) n) 2)))))
-
 (test 1 (cost-to-move-to 0
 			   (hash-counter '(1))
 			   (lambda (x pos) (let ((n (abs (- x pos))))
@@ -561,3 +562,76 @@
 ;; I'm not sure how but I have a feeling a hueristic could be used to speed up
 ;; the algo. Maybe look around the median/mean? 
 ;; -----------------------------------------------------------------------------
+
+;; -----------------------------------------------------------------------------
+;; Day 8
+;; -----------------------------------------------------------------------------
+;; Problem 15
+;; -----------------------------------------------------------------------------
+(defun problem15 ()
+  (loop
+    with lines = (mapcar (lambda (row) (ppcre:split " \\| " row)) (load-input 8))
+    with outputs = (mapcar #'second lines)
+    for output in outputs
+    sum (loop for segment in (ppcre:split " " output)
+	      counting (member (length segment) '(2 3 4 7)))))
+
+;; -----------------------------------------------------------------------------
+;; Problem 16
+;; 1) Count occurances of letters in patterns
+;; 2) Deduce segment mapping
+;; 3) Apply segment map to output
+;; 4) Map 3) to digits
+;; 5) Sum all outputs
+;; -----------------------------------------------------------------------------
+(defun make-segment-map (segment-counts one four seven eight)
+  (let ((hash (make-hash-table)))
+    (setf (gethash #\a hash) (first (set-difference seven one)))
+    (setf (gethash #\b hash) (first (hash-get-inv 6 segment-counts)))
+    (setf (gethash #\c hash) (first (set-difference (hash-get-inv 8 segment-counts) (set-difference seven one))))
+    (setf (gethash #\d hash) (first (intersection (hash-get-inv 7 segment-counts) four)))
+    (setf (gethash #\e hash) (first (hash-get-inv 4 segment-counts)))
+    (setf (gethash #\f hash) (first (hash-get-inv 9 segment-counts)))
+    (setf (gethash #\g hash) (first (set-difference (hash-get-inv 7 segment-counts) four)))
+    hash))
+
+(defun decode-digit (digit mapping)
+  (flet ((match (a b) (null (set-exclusive-or (string-to-list a) (string-to-list b)))))
+    (let ((segment (coerce (flatten (mapcar (lambda (d) (hash-get-inv d mapping)) (string-to-list digit))) 'string)))
+      (cond
+	((match segment "abcefg")	0)
+	((match segment "cf")		1)
+	((match segment "acdeg")	2)
+	((match segment "acdfg")	3)
+	((match segment "bcdf")		4)
+	((match segment "abdfg")	5)
+	((match segment "abdefg")	6)
+	((match segment "acf")		7)
+	((match segment "abcdefg")	8)
+	((match segment "abcdfg")	9)
+	(T (format T "Unknown segment ~s" segment))))))
+
+(defun problem16 ()
+  (loop
+    ;; Parse inputs
+    with lines = (load-input 8)
+    with splits = (mapcar (lambda (row) (ppcre:split " \\| " row)) lines)
+    
+    for split in splits
+    ;; Split each row into signal and output
+    sum (let* ((signals (first split))
+	       (outputs (second split))
+	       (one (string-to-list (find 2 (ppcre:split " " signals) :key #'length)))
+	       (four (string-to-list (find 4 (ppcre:split " " signals) :key #'length)))
+	       (seven (string-to-list (find 3 (ppcre:split " " signals) :key #'length)))
+	       (eight (string-to-list (find 7 (ppcre:split " " signals) :key #'length)))
+	       (segment-counts (hash-counter (string-to-list (ppcre:regex-replace-all " " signals ""))))
+	       (segment-map (make-segment-map segment-counts one four seven eight))
+	       (solution (loop 
+			   for mapped-digit in (ppcre:split " " outputs)
+			   collect (digit-char (decode-digit mapped-digit segment-map)))))
+	      (parse-integer (coerce solution 'string)))))
+
+(problem16)
+
+
