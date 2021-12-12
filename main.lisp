@@ -1,4 +1,6 @@
 (ql:quickload :cl-ppcre)
+(ql:quickload :iterate)
+
 
 ;; -----------------------------------------------------------------------------
 ;; Utils
@@ -21,12 +23,27 @@
   "transposes a matrix"
   (apply #'mapcar #'list matrix))
 
+(defun combinations (l1 l2)
+  (loop for x in l1
+	append (loop for y in l2
+		      collect (list x y))))
+
+(test '((1 4) (1 5) (2 4) (2 5)) (combinations '(1 2) '(4 5)))
+
 ;; Tests
 (test '((1 4 7) (2 5 8) (3 6 9)) (transpose '((1 2 3) (4 5 6) (7 8 9))))
 
 (defun string-to-list (s)
   (if (equal "" s) ()
       (cons (char s 0) (string-to-list (subseq s 1)))))
+
+
+(defun mapargs (fn arglist)
+  (loop
+    for args in arglist
+    collect (apply fn args)))
+
+(test '(3 7) (mapargs #'+ '((1 2) (3 4))))
 
 (defun curry (fn x)
   "curries the function fn with x"
@@ -80,6 +97,55 @@
 
 (test 6 (funcall (curry #'+ 1) 2 3))
 
+(defun pairs (l)
+  (loop for i below (/ (length l) 2)
+	do (format T "~d " i)
+	collect (list (nth (* 2 i) l) (nth (+ 1 (* 2 i)) l))))
+
+(test '((1 2) (3 4)) (pairs '(1 2 3 4)))
+(test '((1 2) (3 4) (5 nil)) (pairs '(1 2 3 4 5)))
+
+(defun make-grid (data)
+  (make-array (list (length data)
+		    (length (first data)))
+	      :initial-contents data))
+
+(defun grid-neighbors (grid x y &optional (pred (lambda (x) T)))
+  (loop
+    for (dx dy) in '((1 0) (-1 0) (0 1) (0 -1))
+    when (and (array-in-bounds-p grid (+ dx x) (+ dy y))
+	      (funcall pred (aref grid (+ dx x) (+ dy y))))
+      collect (list (+ dx x) (+ dy y))))
+
+(test '((1 0) (0 1)) (grid-neighbors (make-grid '((1 2 3) (4 5 6) (7 8 9))) 0 0))
+(test '((2 1) (0 1) (1 2) (1 0)) (grid-neighbors (make-grid '((1 2 3) (4 5 6) (7 8 9))) 1 1))
+
+(defun grid-coords (grid)
+    (let* ((height (first (array-dimensions grid)))
+	   (width (second (array-dimensions grid))))
+      (loop for col below width
+	    appending (loop for row below height
+			  collect (list row col)))))
+
+(test '((0 0) (1 0) (0 1) (1 1)) (grid-coords (make-grid '((1 2) (3 4)))))
+
+(defun grid-ref (grid coord)
+  (aref grid (first coord) (second coord)))
+
+(defun grid-map (fn grid &optional (test (lambda (x) T)))
+  (loop
+    for (i j) in (grid-coords grid)
+    when (funcall test (aref grid i j))
+      do (setf (aref grid i j) (funcall fn (aref grid i j))))
+  grid)
+
+(grid-map #'1+ (make-grid '((1 2) (3 4))) #'oddp)
+
+(defun grid-inc (grid i j &optional (n 1))
+  (setf (aref grid i j) (+ n (aref grid i j)))
+  grid)
+
+(grid-inc (make-grid '((1 2) (3 4))) 0 0)
 ;; -----------------------------------------------------------------------------
 ;; Helpers
 ;; -----------------------------------------------------------------------------
@@ -87,6 +153,10 @@
   "Loads the input for the given problem"
   (uiop:read-file-lines (format NIL "~~/projects/aoc_2021/inputs/~d.txt" problem-number)))
 
+(defun load-input-grid (problem-number)
+  (make-grid
+   (mapcar (lambda (row) (mapcar #'digit-char-p (coerce row 'list)))
+	   (load-input problem-number))))
 ;; -----------------------------------------------------------------------------
 ;; Day 1
 ;; -----------------------------------------------------------------------------
@@ -632,6 +702,209 @@
 			   collect (digit-char (decode-digit mapped-digit segment-map)))))
 	      (parse-integer (coerce solution 'string)))))
 
-(problem16)
+
+;; -----------------------------------------------------------------------------
+;; Day 9
+;; -----------------------------------------------------------------------------
+;; Problem 17
+;; -----------------------------------------------------------------------------
+;; Initially I wrote a DFS solution. It was a terrible solution. I didn't sleep
+;; much last night and this was my first solution. It goes to show it's a good
+;; idea to stop and brainstorm a few approaches before diving into the
+;; implementation
+(defun local-minimum-p (grid x y)
+  (when (array-in-bounds-p grid x y)
+    (eq 0 (length (grid-neighbors grid x y
+				   (lambda (other) (>= (aref grid x y) other)))))))
+;; tests
+(test T (local-minimum-p (make-grid '((1 2 3) (4 5 6) (7 8 9))) 0 0))
+(test nil (local-minimum-p (make-grid '((5 2 3) (4 5 6) (7 8 9))) 0 0))
+
+(defun problem17 ()
+  (let* ((depth-grid (make-grid
+			    (mapcar (lambda (row) (mapcar #'digit-char-p (coerce row 'list)))
+				    (load-input 9))))
+	 (height (first (array-dimensions depth-grid)))
+	 (width (second (array-dimensions depth-grid))))
+    (loop for col below width
+	  sum (loop for row below height
+			when (local-minimum-p depth-grid row col)
+			  sum (+ 1 (aref depth-grid row col))))))
+
+;; -----------------------------------------------------------------------------
+;; Problem 18
+;; -----------------------------------------------------------------------------
+(defun flows-from (grid x y)
+  (unless (= 9 (aref grid x y))
+    (let* ((cur (aref grid x y)))
+      (remove-if (lambda (other) (or (= (grid-ref grid other) 9)
+				     (< (grid-ref grid other) cur)))
+		 (grid-neighbors grid x y)))))
+;; test
+(test '((1 0) (0 1)) (flows-from (make-grid '((1 2 3) (4 5 6) (7 8 9))) 0 0))
+
+(defun find-basin (grid x y)
+  (let ((seen ()))
+      (labels ((bfs (grid x y)
+	   (unless (or (= 9 (aref grid x y)))
+	     (setf seen (cons (list x y) seen))
+	     (let ((inflows (flows-from grid x y)))
+	       (when inflows
+		 (cons inflows 
+			 (remove-if #'null (loop for (other-x other-y) in inflows
+						 when (not (member (list other-x other-y) seen :test #'equal))
+						   collect (bfs grid other-x other-y)))))))))
+	(cons (list x y)
+	      (remove-duplicates (pairs (flatten (bfs grid x y))) :test #'equal)))))
+
+(defun problem18 ()
+  (let* ((depth-grid (make-grid
+		      (mapcar (lambda (row) (mapcar #'digit-char-p (coerce row 'list)))
+			      (load-input 9))))
+	 (basins (loop for (row col) in (grid-coords depth-grid)
+		       when (local-minimum-p depth-grid row col)
+			 collect (find-basin depth-grid row col))))
+    (reduce #'* (subseq (sort (mapcar #'length basins) #'>) 0 3))))
+
+;; -----------------------------------------------------------------------------
+;; Restrospective
+;; Working with arrays is always a big thing. In any language it's great to
+;; have some utilities around arrays ready. 
+;; -----------------------------------------------------------------------------
+
+;; -----------------------------------------------------------------------------
+;; Day 10
+;; -----------------------------------------------------------------------------
+;; Problem 19
+;; -----------------------------------------------------------------------------
+(defparameter chunk-pairs (pairlis (string-to-list "[({<") (string-to-list "])}>")))
+(defparameter syntax-error-scoreboard (pairlis
+				       (string-to-list ")]}>")
+				       '(3 57 1197 25137)))
+
+
+(defun find-inbalance (string pairs)
+  (let ((stack ())
+	(opens (mapcar #'car pairs))
+	(closes (mapcar #'cdr pairs)))
+    (loop
+      for c in (string-to-list string)
+      when (member c opens)
+	do (setf stack (cons (cdr (assoc c pairs)) stack))
+      when (member c closes)
+	do (if (equal (first stack) c)
+	       (setf stack (rest stack))
+	       (return (values c stack)))
+      finally (return (values nil stack)))))
+
+;; tests
+(test nil (find-inbalance "[]" chunk-pairs))
+(test #\) (find-inbalance "[)" chunk-pairs))
+(test #\} (find-inbalance "{([(<{}[<>[]}>{[]{[(<()>" chunk-pairs))
+(test #\) (find-inbalance "[[<[([]))<([[{}[[()]]]" chunk-pairs))
+(test #\] (find-inbalance "[{[{({}]{}}([{[{{{}}([]" chunk-pairs))
+(test #\) (find-inbalance "[<(<(<(<{}))><([]([]()" chunk-pairs))
+(test #\> (find-inbalance "<{([([[(<>()){}]>(<<{{" chunk-pairs))
+(test (values nil '(#\} #\} #\] #\] #\) #\} #\) #\])) (find-inbalance "[({(<(())[]>[[{[]{<()<>>" chunk-pairs))
+
+
+(find-inbalance "[({(<(())[]>[[{[]{<()<>>" chunk-pairs)
+
+(defun problem19 ()
+  (loop
+    for line in (load-input 10)
+    for inbalance = (find-inbalance line chunk-pairs)
+    when inbalance sum (cdr (assoc inbalance syntax-error-scoreboard))))
+
+;; -----------------------------------------------------------------------------
+;; Problem 20
+;; -----------------------------------------------------------------------------
+(defparameter autocomplete-error-scoreboard (pairlis
+					     (string-to-list ")]}>")
+					     '(1 2 3 4)))
+
+(defun autocomplete-error-score (c stack)
+  (let ((score 0))
+    (loop
+      for x in stack
+      do (setf score (+ (* score 5) (cdr (assoc x autocomplete-error-scoreboard)))))
+    score))
+
+(test 294 (autocomplete-error-score nil (string-to-list "])}>")))
+(test 288957 (autocomplete-error-score nil (string-to-list "}}]])})]")))
+(test 1480781 (autocomplete-error-score NIL '(#\} #\} #\> #\} #\> #\) #\) #\) #\))))
+
+(defun problem20 ()
+  (let* ((errors (mapcar
+		  (lambda (l) (multiple-value-list (find-inbalance l chunk-pairs)))
+		  (load-input 10)))
+	 (autocomplete-errors (remove-if-not (lambda (xs) (null (first xs))) errors))
+	 (scores (mapcar (lambda (err) (autocomplete-error-score (first err) (second err))) autocomplete-errors)))
+    (nth (floor (length scores) 2) (sort scores #'>))))
+
+;; -----------------------------------------------------------------------------
+;; Day 11
+;; -----------------------------------------------------------------------------
+;; Problem 21
+;; -----------------------------------------------------------------------------
+(defparameter flashes 0)
+
+(defun octopus-flash (grid i j)
+  (incf flashes)
+  (setf (aref grid i j) 0)
+  (loop
+    for (di dj) in (combinations '(-1 0 1) '(-1 0 1))
+    when (and (array-in-bounds-p grid (+ i di) (+ j dj))
+	      (or (/= di 0) (/= dj 0)))
+
+      unless (= 0 (aref grid (+ i di) (+ j dj)))
+	do (incf (aref grid (+ i di) (+ j dj)))
+	and when (> (aref grid (+ i di) (+ j dj)) 9)
+	      do (setf grid (octopus-flash grid (+ i di) (+ j dj)))
+    finally (return grid)))
+
+
+(defun update-octopus-levels (grid)
+  (loop
+    for (i j) in (grid-coords grid)
+    when (> (aref grid i j) 9)
+      do (format T "~d, ~d = ~d" i j (aref grid i j))
+      and do (setf grid (octopus-flash grid i j))
+    finally (return grid)))
+
+(defun problem21 (steps)
+  (setf flashes 0)
+  (loop
+    with octopus-levels = (load-input-grid 11)
+    for i below steps
+    do (setf octopus-levels (grid-map #'1+ octopus-levels))
+    do (setf octopus-levels (update-octopus-levels octopus-levels))
+    finally (return flashes)))
+
+;; -----------------------------------------------------------------------------
+;; Problem 22
+;; When do all octopuses flash at the same time?
+;; -----------------------------------------------------------------------------
+(defun octopus-syncronized-p (grid)
+  (loop
+    for (i j) in (grid-coords grid)
+    when (/= 0 (aref grid i j))
+      do (return nil)
+    finally (return T)))
+
+(test T (octopus-syncronized-p (make-grid '((0 0 0) (0 0 0)))))
+(test nil  (octopus-syncronized-p (make-grid '((0 1 0) (0 0 0)))))
+
+(defun problem22 ()
+  (loop
+    with octopus-levels = (load-input-grid 11)
+    with i = 0
+    do (setf octopus-levels (grid-map #'1+ octopus-levels))
+    do (setf octopus-levels (update-octopus-levels octopus-levels))
+    do (incf i)
+    when (octopus-syncronized-p octopus-levels)
+      do (return i)))
+
+(problem22)
 
 
